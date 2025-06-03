@@ -4,6 +4,38 @@ const throttle = require('express-throttle-bandwidth');
 const app = express();
 const fs = require("fs");
 
+// 获取真实IP的函数
+function getRealIP(req) {
+  let ip = req.headers['x-forwarded-for'] || 
+          req.headers['x-real-ip'] || 
+          req.ip || 
+          req.connection.remoteAddress;
+          
+  // 如果是 x-forwarded-for，取第一个 IP
+  if (ip && ip.includes(',')) {
+    ip = ip.split(',')[0].trim();
+  }
+  
+  // 处理 IPv6 格式
+  if (ip && ip.substr(0, 7) == "::ffff:") {
+    ip = ip.substr(7);
+  }
+  
+  return ip || '未知IP';
+}
+
+// 添加访问日志中间件
+app.use((req, res, next) => {
+  const timestamp = new Date().toLocaleString('zh-CN');
+  const ip = getRealIP(req);
+  const method = req.method;
+  const url = req.url;
+  const userAgent = req.get('User-Agent');
+  
+  console.log(`[${timestamp}] ${ip} ${method} ${url} "${userAgent}"`);
+  next();
+});
+
 // 读取配置文件
 const config = require('./config.json');
 const PORT = process.env.PORT || config.port;
@@ -116,6 +148,7 @@ app.get("/files/*", async (req, res) => {
               ul { list-style-type: none; padding-left: 20px; }
               li { margin: 5px 0; }
               .download-speed { position: fixed; top: 10px; right: 10px; }
+              .visitor-info { position: fixed; bottom: 10px; right: 10px; background: #f0f0f0; padding: 10px; border-radius: 5px; font-size: 12px; }
             </style>
           </head>
           <body>
@@ -129,6 +162,12 @@ app.get("/files/*", async (req, res) => {
             <ul>
               ${generateList(structure)}
             </ul>
+            <div class="visitor-info">
+              <p>访问信息：</p>
+              <p>IP地址：${getRealIP(req)}</p>
+              <p>浏览器：${req.get('User-Agent')}</p>
+              <p>访问时间：${new Date().toLocaleString('zh-CN')}</p>
+            </div>
           </body>
         </html>
       `);
@@ -150,6 +189,17 @@ app.get("/", (req, res) => {
       <head>
         <meta charset="utf-8">
         <title>File Hosting</title>
+        <style>
+          .visitor-info {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+          }
+        </style>
       </head>
       <body>
         <h1>私人文件托管服务</h1>
@@ -157,6 +207,12 @@ app.get("/", (req, res) => {
           ? `当前下载速度限制: ${SPEED_LIMIT}Mbps`
           : '未启用速度限制'}</p>
         <p><a href="/files">浏览文件</a></p>
+        <div class="visitor-info">
+          <p>访问信息：</p>
+          <p>IP地址：${getRealIP(req)}</p>
+          <p>浏览器：${req.get('User-Agent')}</p>
+          <p>访问时间：${new Date().toLocaleString('zh-CN')}</p>
+        </div>
       </body>
     </html>
   `);
