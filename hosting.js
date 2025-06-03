@@ -10,7 +10,7 @@ const PORT = process.env.PORT || config.port;
 const HOST = config.host;
 
 // 设置下载速度限制（单位：Mbps）
-const SPEED_LIMIT = config.speedLimit.speed; 
+const SPEED_LIMIT = config.speedLimit.speed;
 const BYTES_PER_SECOND = config.speedLimit.enable ? (SPEED_LIMIT * 1024 * 1024) / 8 : 0;
 
 // 文件名编码函数
@@ -21,7 +21,7 @@ function encodeFileName(fileName) {
     .replace(/%20/g, ' ');
 }
 
-// 设置静态文件目录并添加限速
+// 设置静态文件目录中间件
 const staticMiddleware = express.static(path.join(__dirname, "files"), {
   setHeaders: (res, filePath) => {
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -37,16 +37,73 @@ if (config.speedLimit.enable) {
   app.use("/files", staticMiddleware);
 }
 
-// ...existing code for getDirectoryStructure function...
+// 递归获取目录结构的函数
+async function getDirectoryStructure(dirPath) {
+  const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  const result = [];
+  
+  for (const item of items) {
+    const fullPath = path.join(dirPath, item.name);
+    const relativePath = path.relative(path.join(__dirname, 'files'), fullPath);
+    
+    if (item.isDirectory()) {
+      const children = await getDirectoryStructure(fullPath);
+      result.push({
+        name: item.name,
+        path: relativePath,
+        isDirectory: true,
+        children
+      });
+    } else {
+      result.push({
+        name: item.name,
+        path: relativePath,
+        isDirectory: false
+      });
+    }
+  }
+  
+  return result;
+}
 
 // 修改 /files 路由处理
 app.get("/files/*", async (req, res) => {
   try {
-    // ...existing code...
+    const requestPath = req.path.replace('/files', '') || '/';
+    const fullPath = path.join(__dirname, 'files', requestPath);
+    
+    // 安全检查：确保请求路径在 files 目录下
+    if (!fullPath.startsWith(path.join(__dirname, 'files'))) {
+      return res.status(403).send('Access denied');
+    }
+
+    const stat = await fs.promises.stat(fullPath);
     
     if (stat.isDirectory()) {
-      // ...existing code...
+      const structure = await getDirectoryStructure(fullPath);
       
+      // 生成面包屑导航
+      const pathParts = requestPath.split('/').filter(Boolean);
+      let breadcrumbs = '<a href="/files">根目录</a>';
+      let currentPath = '';
+      
+      for (const part of pathParts) {
+        currentPath += '/' + part;
+        breadcrumbs += ` > <a href="/files${currentPath}">${part}</a>`;
+      }
+
+      // 生成目录和文件列表
+      function generateList(items) {
+        return items.map(item => {
+          if (item.isDirectory) {
+            return `<li>📁 <a href="/files/${item.path}">${item.name}/</a></li>`;
+          } else {
+            return `<li>📄 <a href="/files/${item.path}">${item.name}</a></li>`;
+          }
+        }).join('\n');
+      }
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -115,6 +172,7 @@ app.get("/robots.txt", (req, res) => {
   res.send("User-agent: *\nDisallow: /files");
 });
 
+// 启动服务器
 app.listen(PORT, HOST, () => {
   console.log(`Server is running on http://${HOST}:${PORT}`);
   if (config.speedLimit.enable) {
