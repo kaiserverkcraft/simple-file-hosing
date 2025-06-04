@@ -98,6 +98,12 @@ async function getDirectoryStructure(dirPath) {
   return result;
 }
 
+// 处理robots.txt
+app.get("/robots.txt", (req, res) => {
+  res.type('text/plain');
+  res.send("User-agent: *\nDisallow: /");
+});
+
 // 修改 /files 路由处理
 app.get("/files/*", async (req, res) => {
   try {
@@ -221,11 +227,6 @@ app.get("/", (req, res) => {
 // 处理 404 错误
 app.use((req, res) => {
   res.status(404).send("File not found");
-});
-
-// 处理robots.txt
-app.get("/robots.txt", (req, res) => {
-  res.send("User-agent: *\nDisallow: /files");
 });
 
 // 启动服务器
