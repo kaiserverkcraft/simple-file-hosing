@@ -1,3 +1,4 @@
+[![State-of-the-art Shitcode](https://img.shields.io/static/v1?label=State-of-the-art&message=Shitcode&color=7B5804)](https://github.com/trekhleb/state-of-the-art-shitcode)
 # 一个简单的文件托管
 - 轻量速度快
 - 支持速度限制（Mbps为单位）
