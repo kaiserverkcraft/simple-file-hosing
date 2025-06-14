@@ -25,22 +25,45 @@ function getRealIP(req) {
   return ip || '未知IP';
 }
 
+const MAX_CACHE_SIZE = 100;
 const ipInfoCache = new Map();
+const ipAccessTimes = new Map(); // 按照获取时间排序的 Map
 
 async function getIPInfo(ip) {
   if (ipInfoCache.has(ip)) {
+    ipAccessTimes.set(ip, Date.now());
     return ipInfoCache.get(ip);
   }
 
   try {
-    const response = await axios.get(`https://ipinfo.io/${ip}`);
+    // 自动移除最老的
+    if (ipInfoCache.size >= MAX_CACHE_SIZE) {
+      let oldestIp = null;
+      let oldestTime = Infinity;
+      
+      for (const [cachedIp, time] of ipAccessTimes) {
+        if (time < oldestTime) {
+          oldestTime = time;
+          oldestIp = cachedIp;
+        }
+      }
+      
+      if (oldestIp) {
+        ipInfoCache.delete(oldestIp);
+        ipAccessTimes.delete(oldestIp);
+      }
+    }
+
+    const response = await axios.get(`https://ipinfo.io/${ip}?token=5c6336f76f9026`);
     const { country, city, region } = response.data;
     const ipInfo = { country, city, region };
     ipInfoCache.set(ip, ipInfo);
+    ipAccessTimes.set(ip, Date.now());
     return ipInfo;
   } catch (error) {
     console.error('获取IP信息失败:', error.message);
-    ipInfoCache.set(ip, null); // 失败也缓存，避免重复请求
+    ipInfoCache.set(ip, null);
+    ipAccessTimes.set(ip, Date.now());
     return null;
   }
 }
