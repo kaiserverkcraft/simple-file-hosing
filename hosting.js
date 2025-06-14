@@ -54,7 +54,7 @@ async function getIPInfo(ip) {
       }
     }
 
-    const response = await axios.get(`https://ipinfo.io/${ip}?token=5c6336f76f9026`);
+    const response = await axios.get(`https://ipinfo.io/${ip}`);
     const { country, city, region } = response.data;
     const ipInfo = { country, city, region };
     ipInfoCache.set(ip, ipInfo);
