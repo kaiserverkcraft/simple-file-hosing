@@ -1,4 +1,5 @@
 const express = require("express");
+const axios = require("axios");
 const path = require("path");
 const throttle = require('express-throttle-bandwidth');
 const app = express();
@@ -24,15 +25,48 @@ function getRealIP(req) {
   return ip || '未知IP';
 }
 
-// 添加访问日志中间件
-app.use((req, res, next) => {
+const ipInfoCache = new Map();
+
+async function getIPInfo(ip) {
+  if (ipInfoCache.has(ip)) {
+    return ipInfoCache.get(ip);
+  }
+
+  try {
+    const response = await axios.get(`https://ipinfo.io/${ip}`);
+    const { country, city, region } = response.data;
+    const ipInfo = { country, city, region };
+    ipInfoCache.set(ip, ipInfo);
+    return ipInfo;
+  } catch (error) {
+    console.error('获取IP信息失败:', error.message);
+    ipInfoCache.set(ip, null); // 失败也缓存，避免重复请求
+    return null;
+  }
+}
+
+// 只获取一次IP信息，后续直接返回缓存
+app.use(async (req, res, next) => {
   const timestamp = new Date().toLocaleString('zh-CN');
   const ip = getRealIP(req);
   const method = req.method;
   const url = req.url;
   const userAgent = req.get('User-Agent');
-  
-  console.log(`[${timestamp}] ${ip} ${method} ${url} "${userAgent}"`);
+
+  if (ipInfoCache.has(ip)) {
+    req.ipInfo = ipInfoCache.get(ip);
+  } else {
+    req.ipInfo = await getIPInfo(ip);
+  }
+
+  const ipInfoStr = req.ipInfo
+    ? `${req.ipInfo.country || ''} ${req.ipInfo.region || ''} ${req.ipInfo.city || ''}`.trim()
+    : '未知位置';
+
+  res.on('finish', () => {
+    console.log(`[${timestamp}] ${ip} ${ipInfoStr} ${method} ${url} "${userAgent}" Status: ${res.statusCode}`);
+  });
+
   next();
 });
 
@@ -168,9 +202,10 @@ app.get("/files/*", async (req, res) => {
             <ul>
               ${generateList(structure)}
             </ul>
-            <div class="visitor-info">
+              <div class="visitor-info">
               <p>访问信息：</p>
               <p>IP地址：${getRealIP(req)}</p>
+              <p>位置信息：${req.ipInfo ? `${req.ipInfo.country} ${req.ipInfo.city} ${req.ipInfo.region}` : '未知位置'}</p>
               <p>浏览器：${req.get('User-Agent')}</p>
               <p>访问时间：${new Date().toLocaleString('zh-CN')}</p>
             </div>
@@ -213,12 +248,13 @@ app.get("/", (req, res) => {
           ? `当前下载速度限制: ${SPEED_LIMIT}Mbps`
           : '未启用速度限制'}</p>
         <p><a href="/files">浏览文件</a></p>
-        <div class="visitor-info">
-          <p>访问信息：</p>
-          <p>IP地址：${getRealIP(req)}</p>
-          <p>浏览器：${req.get('User-Agent')}</p>
-          <p>访问时间：${new Date().toLocaleString('zh-CN')}</p>
-        </div>
+          <div class="visitor-info">
+            <p>访问信息：</p>
+            <p>IP地址：${getRealIP(req)}</p>
+            <p>位置信息：${req.ipInfo ? `${req.ipInfo.country} ${req.ipInfo.city} ${req.ipInfo.region}` : '未知位置'}</p>
+            <p>浏览器：${req.get('User-Agent')}</p>
+            <p>访问时间：${new Date().toLocaleString('zh-CN')}</p>
+          </div>
       </body>
     </html>
   `);
